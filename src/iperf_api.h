@@ -89,6 +89,8 @@ typedef uint64_t iperf_size_t;
 #define OPT_IDLE_TIMEOUT 25
 #define OPT_DONT_FRAGMENT 26
 #define OPT_RCV_TIMEOUT 27
+#define OPT_DYNAMIC_RATE 254
+#define OPT_DYNAMIC_RATE_INTERVAL 255
 
 /* states */
 #define TEST_START 1
@@ -127,6 +129,7 @@ int     iperf_get_test_burst( struct iperf_test* ipt );
 int	iperf_get_test_socket_bufsize( struct iperf_test* ipt );
 double	iperf_get_test_reporter_interval( struct iperf_test* ipt );
 double	iperf_get_test_stats_interval( struct iperf_test* ipt );
+double	iperf_get_test_dynamic_rate_interval( struct iperf_test* ipt );
 int	iperf_get_test_num_streams( struct iperf_test* ipt );
 int	iperf_get_test_repeating_payload( struct iperf_test* ipt );
 int	iperf_get_test_timestamps( struct iperf_test* ipt );
@@ -158,6 +161,7 @@ void	iperf_set_test_omit( struct iperf_test* ipt, int omit );
 void	iperf_set_test_duration( struct iperf_test* ipt, int duration );
 void	iperf_set_test_reporter_interval( struct iperf_test* ipt, double reporter_interval );
 void	iperf_set_test_stats_interval( struct iperf_test* ipt, double stats_interval );
+void	iperf_set_test_dynamic_rate_interval( struct iperf_test* ipt, double dynamic_rate_interval );
 void	iperf_set_test_state( struct iperf_test* ipt, signed char state );
 void	iperf_set_test_blksize( struct iperf_test* ipt, int blksize );
 void	iperf_set_test_logfile( struct iperf_test* ipt, const char *logfile );
@@ -232,6 +236,12 @@ void     iperf_stats_callback(struct iperf_test * test);
  *
  */
 void     iperf_reporter_callback(struct iperf_test * test);
+
+/**
+ * iperf_dynamic_rate_callback -- handles the report printing
+ *
+ */
+void     iperf_dynamic_rate_callback(struct iperf_test * test, struct iperf_time * nowP);
 
 /**
  * iperf_new_test -- return a new iperf_test with default values

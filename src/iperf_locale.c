@@ -205,6 +205,8 @@ const char usage_longstr[] = "Usage: iperf3 [-s|-c host] [options]\n"
                            "  --rsa-public-key-path     path to the RSA public key used to encrypt\n"
                            "                            authentication credentials\n"
 #endif //HAVESSL
+                           "  --dynamic-rate            enable dynamic rate control\n"
+                           "  --dynamic-rate-interval   seconds between dynamic rate update (default 1 sec)\n"
 
 #ifdef NOT_YET_SUPPORTED /* still working on these */
 #endif

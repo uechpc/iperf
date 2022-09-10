@@ -116,6 +116,7 @@ struct iperf_stream_result
 {
     iperf_size_t bytes_received;
     iperf_size_t bytes_sent;
+    iperf_size_t bytes_sent_prev_dynamic_rate;
     iperf_size_t bytes_received_this_interval;
     iperf_size_t bytes_sent_this_interval;
     iperf_size_t bytes_sent_omit;
@@ -132,6 +133,7 @@ struct iperf_stream_result
     struct iperf_time start_time;
     struct iperf_time end_time;
     struct iperf_time start_time_fixed;
+    struct iperf_time prev_dynamic_rate_time;
     double sender_time;
     double receiver_time;
     TAILQ_HEAD(irlisthead, iperf_interval_results) interval_results;
@@ -169,6 +171,7 @@ struct iperf_settings
     int	      connect_timeout;	    /* socket connection timeout, in ms */
     int       idle_timeout;         /* server idle time timeout */
     struct iperf_time rcv_timeout;  /* Timeout for receiving messages in active mode, in us */
+    int dynamic_rate_enabled;
 };
 
 struct iperf_test;
@@ -226,6 +229,8 @@ struct iperf_stream
     SLIST_ENTRY(iperf_stream) streams;
 
     void     *data;
+
+    iperf_size_t dynamic_rate;  /* dynamic rate for --bitrate pacing in bits per second */
 };
 
 struct protocol {
@@ -329,13 +334,16 @@ struct iperf_test
     int       omitting;
     double    stats_interval;
     double    reporter_interval;
+    double    dynamic_rate_interval;
     void      (*stats_callback) (struct iperf_test *);
     void      (*reporter_callback) (struct iperf_test *);
+    void      (*dynamic_rate_callback) (struct iperf_test *, struct iperf_time *);
     Timer     *omit_timer;
     Timer     *timer;
     int        done;
     Timer     *stats_timer;
     Timer     *reporter_timer;
+    Timer     *dynamic_rate_timer;
 
     double cpu_util[3];                            /* cpu utilization of the test - total, user, system */
     double remote_cpu_util[3];                     /* cpu utilization for the remote host/client - total, user, system */
