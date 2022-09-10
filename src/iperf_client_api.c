@@ -629,6 +629,11 @@ iperf_run_client(struct iperf_test * test)
 			setnonblocking(sp->socket, 1);
 		    }
 		}
+
+                /* do initial throttling */
+                SLIST_FOREACH(sp, &test->streams, streams) {
+                    iperf_check_throttle(sp, &now);
+                }
 	    }
 
 

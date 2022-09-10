@@ -431,7 +431,7 @@ the executable.
 
           --dynamic-rate
                  enable dynamic rate control. Override iperf_next_dynamic_rate by
-                 LD_PRELOAD to decise the rate in bytes per second.
+                 LD_PRELOAD to decise the rate in bits per second.
 
    EXAMPLES
       Authentication - RSA Keypair

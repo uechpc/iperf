@@ -1756,24 +1756,33 @@ iperf_check_throttle(struct iperf_stream *sp, struct iperf_time *nowP)
     double seconds;
     uint64_t bits_per_second;
     iperf_size_t rate;
+    int green_light;
 
-    if (sp->test->done || sp->test->settings->rate == 0)
+    if (sp->test->done)
         return;
 
-    if (sp->test->settings->dynamic_rate_enabled) {
-        /* measure from last update  */
-        iperf_time_diff(&sp->result->prev_dynamic_rate_time, nowP, &temp_time);
-        seconds = iperf_time_in_secs(&temp_time);
-        bits_per_second = (sp->result->bytes_sent - sp->result->bytes_sent_prev_dynamic_rate) * 8 / seconds;
-        rate = sp->dynamic_rate;
+    if (sp->test->settings->rate != 0) {
+        if (sp->test->settings->dynamic_rate_enabled) {
+            /* measure from last update  */
+            iperf_time_diff(&sp->result->prev_dynamic_rate_time, nowP, &temp_time);
+            seconds = iperf_time_in_secs(&temp_time);
+            bits_per_second = (sp->result->bytes_sent - sp->result->bytes_sent_prev_dynamic_rate) * 8 / seconds;
+            rate = sp->dynamic_rate;
+        } else {
+            iperf_time_diff(&sp->result->start_time_fixed, nowP, &temp_time);
+            seconds = iperf_time_in_secs(&temp_time);
+            bits_per_second = sp->result->bytes_sent * 8 / seconds;
+            rate = sp->test->settings->rate;
+        }
+        green_light = bits_per_second < rate;
+    } else if (sp->test->settings->fqrate != 0) {
+        /* do not send if dynamic rate is 0 */
+        green_light = sp->dynamic_rate > 0;
     } else {
-        iperf_time_diff(&sp->result->start_time_fixed, nowP, &temp_time);
-        seconds = iperf_time_in_secs(&temp_time);
-        bits_per_second = sp->result->bytes_sent * 8 / seconds;
-        rate = sp->test->settings->rate;
+        return;
     }
 
-    if (bits_per_second < rate) {
+    if (green_light) {
         sp->green_light = 1;
         FD_SET(sp->socket, &sp->test->write_set);
     } else {
@@ -4161,23 +4170,20 @@ dynamic_rate_update(struct iperf_test *test, struct iperf_time *nowP) {
     double total_seconds;
     struct iperf_time temp_time;
 
-	SLIST_FOREACH(sp, &test->streams, streams) {
+    SLIST_FOREACH(sp, &test->streams, streams) {
         /* total time */
         iperf_time_diff(&sp->result->start_time_fixed, nowP, &temp_time);
         total_seconds = iperf_time_in_secs(&temp_time);
 
         /* update */
-        iperf_size_t rate = iperf_next_dynamic_rate(sp, nowP, total_seconds);
-        if (rate <= 0)
-            rate = 1;
+        sp->dynamic_rate = iperf_next_dynamic_rate(sp, nowP, total_seconds);
 
         if (sp->test->settings->fqrate != 0) {
-            iperf_size_t fqrate = rate / 8;
+            iperf_size_t fqrate = sp->dynamic_rate / 8;
             if (setsockopt(sp->socket, SOL_SOCKET, SO_MAX_PACING_RATE, (void *)&fqrate, sizeof(fqrate)) < 0) {
                 warning("Unable to set socket pacing");
             }
-        } else if (sp->test->settings->rate != 0)
-            sp->dynamic_rate = rate;
+        }
 
         /* initialize */
         memcpy(&sp->result->prev_dynamic_rate_time, nowP, sizeof(struct iperf_time));
@@ -4302,11 +4308,10 @@ iperf_new_stream(struct iperf_test *test, int s, int sender)
 
     /* initialize dynamic rate */
     if (test->settings->dynamic_rate_enabled) {
-        iperf_size_t rate = iperf_next_dynamic_rate(sp, NULL, 0.0);
+        sp->dynamic_rate = iperf_next_dynamic_rate(sp, NULL, 0.0);
         if (test->settings->fqrate != 0) {
-            iperf_size_t fqrate = rate / 8;
-            if (setsockopt(s, SOL_SOCKET, SO_MAX_PACING_RATE, 
-                (void*)&fqrate, sizeof(fqrate)) < 0) {
+            iperf_size_t fqrate = sp->dynamic_rate / 8;
+            if (setsockopt(s, SOL_SOCKET, SO_MAX_PACING_RATE, (void*)&fqrate, sizeof(fqrate)) < 0) {
                 warning("Unable to set socket pacing");
             }
         }

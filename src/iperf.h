@@ -230,7 +230,7 @@ struct iperf_stream
 
     void     *data;
 
-    iperf_size_t dynamic_rate;  /* dynamic rate for --bitrate pacing in bits per second */
+    iperf_size_t dynamic_rate;  /* dynamic rate in bits per second */
 };
 
 struct protocol {
