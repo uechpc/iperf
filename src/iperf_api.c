@@ -4160,7 +4160,7 @@ print_interval_results(struct iperf_test *test, struct iperf_stream *sp, cJSON *
  * `nowP` might be NULL
  */
 iperf_size_t
-iperf_next_dynamic_rate(struct iperf_stream *sp, struct iperf_time *nowP, double total_seconds) {
+iperf_next_dynamic_rate(int streamidx, struct iperf_stream *sp, struct iperf_time *nowP, double total_seconds) {
     return total_seconds * sp->test->settings->rate;
 }
 
@@ -4169,6 +4169,7 @@ dynamic_rate_update(struct iperf_test *test, struct iperf_time *nowP) {
     struct iperf_stream *sp;
     double total_seconds;
     struct iperf_time temp_time;
+    int sidx = 0;
 
     SLIST_FOREACH(sp, &test->streams, streams) {
         /* total time */
@@ -4176,7 +4177,7 @@ dynamic_rate_update(struct iperf_test *test, struct iperf_time *nowP) {
         total_seconds = iperf_time_in_secs(&temp_time);
 
         /* update */
-        sp->dynamic_rate = iperf_next_dynamic_rate(sp, nowP, total_seconds);
+        sp->dynamic_rate = iperf_next_dynamic_rate(sidx, sp, nowP, total_seconds);
 
         if (sp->test->settings->fqrate != 0) {
             iperf_size_t fqrate = sp->dynamic_rate / 8;
@@ -4188,6 +4189,7 @@ dynamic_rate_update(struct iperf_test *test, struct iperf_time *nowP) {
         /* initialize */
         memcpy(&sp->result->prev_dynamic_rate_time, nowP, sizeof(struct iperf_time));
         sp->result->bytes_sent_prev_dynamic_rate = sp->result->bytes_sent;
+        sidx++;
     }
 }
 
@@ -4308,7 +4310,7 @@ iperf_new_stream(struct iperf_test *test, int s, int sender)
 
     /* initialize dynamic rate */
     if (test->settings->dynamic_rate_enabled) {
-        sp->dynamic_rate = iperf_next_dynamic_rate(sp, NULL, 0.0);
+        sp->dynamic_rate = iperf_next_dynamic_rate(-1, sp, NULL, 0.0);
         if (test->settings->fqrate != 0) {
             iperf_size_t fqrate = sp->dynamic_rate / 8;
             if (setsockopt(s, SOL_SOCKET, SO_MAX_PACING_RATE, (void*)&fqrate, sizeof(fqrate)) < 0) {
