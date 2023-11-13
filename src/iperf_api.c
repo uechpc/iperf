@@ -4172,7 +4172,7 @@ wait_for_signal(struct iperf_test *test) {
         return -1;
     }
 
-    iperf_printf(test, "waiting for SIGCONT to pid: %d\n", getpid());
+    fprintf(stderr, "waiting for SIGCONT to pid: %d\n", getpid());
     if ((ret = sigwait(&sigset, &sig)) != 0) {
         perror("sigwait");
         return -1;
