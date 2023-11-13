@@ -47,6 +47,7 @@ main( int argc, char** argv )
     iperf_set_test_duration( test, 5 );
     iperf_set_test_reporter_interval( test, 1 );
     iperf_set_test_stats_interval( test, 1 );
+    iperf_set_test_dynamic_rate_interval( test, 1 );
     /* iperf_set_test_json_output( test, 1 ); */
 
     if ( iperf_run_client( test ) < 0 ) {

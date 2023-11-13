@@ -158,6 +158,17 @@ client_reporter_timer_proc(TimerClientData client_data, struct iperf_time *nowP)
 	test->reporter_callback(test);
 }
 
+static void
+client_dynamic_rate_timer_proc(TimerClientData client_data, struct iperf_time *nowP)
+{
+    struct iperf_test *test = client_data.p;
+
+    if (test->done)
+        return;
+    if (test->dynamic_rate_callback)
+	test->dynamic_rate_callback(test, nowP);
+}
+
 static int
 create_client_timers(struct iperf_test * test)
 {
@@ -194,6 +205,13 @@ create_client_timers(struct iperf_test * test)
     if (test->reporter_interval != 0) {
         test->reporter_timer = tmr_create(&now, client_reporter_timer_proc, cd, test->reporter_interval * SEC_TO_US, 1);
         if (test->reporter_timer == NULL) {
+            i_errno = IEINITTEST;
+            return -1;
+	}
+    }
+    if (test->settings->dynamic_rate_enabled && test->dynamic_rate_interval != 0) {
+        test->dynamic_rate_timer = tmr_create(&now, client_dynamic_rate_timer_proc, cd, test->dynamic_rate_interval * SEC_TO_US, 1);
+        if (test->dynamic_rate_timer == NULL) {
             i_errno = IEINITTEST;
             return -1;
 	}
@@ -614,6 +632,11 @@ iperf_run_client(struct iperf_test * test)
 			setnonblocking(sp->socket, 1);
 		    }
 		}
+
+                /* do initial throttling */
+                SLIST_FOREACH(sp, &test->streams, streams) {
+                    iperf_check_throttle(sp, &now);
+                }
 	    }
 
 

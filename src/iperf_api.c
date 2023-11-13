@@ -254,6 +254,12 @@ iperf_get_test_stats_interval(struct iperf_test *ipt)
     return ipt->stats_interval;
 }
 
+double
+iperf_get_test_dynamic_rate_interval(struct iperf_test *ipt)
+{
+    return ipt->dynamic_rate_interval;
+}
+
 int
 iperf_get_test_num_streams(struct iperf_test *ipt)
 {
@@ -447,6 +453,12 @@ void
 iperf_set_test_stats_interval(struct iperf_test *ipt, double stats_interval)
 {
     ipt->stats_interval = stats_interval;
+}
+
+void
+iperf_set_test_dynamic_rate_interval(struct iperf_test *ipt, double dynamic_rate_interval)
+{
+    ipt->dynamic_rate_interval = dynamic_rate_interval;
 }
 
 void
@@ -1055,6 +1067,8 @@ iperf_parse_arguments(struct iperf_test *test, int argc, char **argv)
         {"idle-timeout", required_argument, NULL, OPT_IDLE_TIMEOUT},
         {"rcv-timeout", required_argument, NULL, OPT_RCV_TIMEOUT},
         {"wait", no_argument, NULL, OPT_WAIT},
+        {"dynamic-rate", no_argument, NULL, OPT_DYNAMIC_RATE},
+        {"dynamic-rate-interval", required_argument, NULL, OPT_DYNAMIC_RATE_INTERVAL},
         {"debug", no_argument, NULL, 'd'},
         {"help", no_argument, NULL, 'h'},
         {NULL, 0, NULL, 0}
@@ -1424,6 +1438,12 @@ iperf_parse_arguments(struct iperf_test *test, int argc, char **argv)
             case OPT_WAIT:
                 test->wait = 1;
 	        break;
+            case OPT_DYNAMIC_RATE:
+                test->settings->dynamic_rate_enabled = 1;
+            break;
+            case OPT_DYNAMIC_RATE_INTERVAL:
+                test->dynamic_rate_interval = atof(optarg);
+            break;
             case 'A':
 #if defined(HAVE_CPU_AFFINITY)
                 test->affinity = strtol(optarg, &endptr, 0);
@@ -1739,13 +1759,34 @@ iperf_check_throttle(struct iperf_stream *sp, struct iperf_time *nowP)
     struct iperf_time temp_time;
     double seconds;
     uint64_t bits_per_second;
+    iperf_size_t rate;
+    int green_light;
 
-    if (sp->test->done || sp->test->settings->rate == 0)
+    if (sp->test->done)
         return;
-    iperf_time_diff(&sp->result->start_time_fixed, nowP, &temp_time);
-    seconds = iperf_time_in_secs(&temp_time);
-    bits_per_second = sp->result->bytes_sent * 8 / seconds;
-    if (bits_per_second < sp->test->settings->rate) {
+
+    if (sp->test->settings->rate != 0) {
+        if (sp->test->settings->dynamic_rate_enabled) {
+            /* measure from last update  */
+            iperf_time_diff(&sp->result->prev_dynamic_rate_time, nowP, &temp_time);
+            seconds = iperf_time_in_secs(&temp_time);
+            bits_per_second = (sp->result->bytes_sent - sp->result->bytes_sent_prev_dynamic_rate) * 8 / seconds;
+            rate = sp->dynamic_rate;
+        } else {
+            iperf_time_diff(&sp->result->start_time_fixed, nowP, &temp_time);
+            seconds = iperf_time_in_secs(&temp_time);
+            bits_per_second = sp->result->bytes_sent * 8 / seconds;
+            rate = sp->test->settings->rate;
+        }
+        green_light = bits_per_second < rate;
+    } else if (sp->test->settings->fqrate != 0) {
+        /* do not send if dynamic rate is 0 */
+        green_light = sp->dynamic_rate > 0;
+    } else {
+        return;
+    }
+
+    if (green_light) {
         sp->green_light = 1;
         FD_SET(sp->socket, &sp->test->write_set);
     } else {
@@ -1893,7 +1934,7 @@ iperf_init_test(struct iperf_test *test)
 	return -1;
     }
     SLIST_FOREACH(sp, &test->streams, streams) {
-	sp->result->start_time = sp->result->start_time_fixed = now;
+	sp->result->start_time = sp->result->start_time_fixed = sp->result->prev_dynamic_rate_time = now;
     }
 
     if (test->on_test_start)
@@ -2737,8 +2778,9 @@ iperf_defaults(struct iperf_test *testp)
 
     testp->stats_callback = iperf_stats_callback;
     testp->reporter_callback = iperf_reporter_callback;
+    testp->dynamic_rate_callback = iperf_dynamic_rate_callback;
 
-    testp->stats_interval = testp->reporter_interval = 1;
+    testp->stats_interval = testp->reporter_interval = testp->dynamic_rate_interval = 1;
     testp->num_streams = 1;
 
     testp->settings->domain = AF_UNSPEC;
@@ -2758,6 +2800,7 @@ iperf_defaults(struct iperf_test *testp)
     testp->settings->connect_timeout = -1;
     testp->settings->rcv_timeout.secs = DEFAULT_NO_MSG_RCVD_TIMEOUT / SEC_TO_mS;
     testp->settings->rcv_timeout.usecs = (DEFAULT_NO_MSG_RCVD_TIMEOUT % SEC_TO_mS) * mS_TO_US;
+    testp->settings->dynamic_rate_enabled = 0;
     testp->zerocopy = 0;
 
     memset(testp->cookie, 0, COOKIE_SIZE);
@@ -2962,6 +3005,7 @@ iperf_free_test(struct iperf_test *test)
     // test->streams = NULL;
     test->stats_callback = NULL;
     test->reporter_callback = NULL;
+    test->dynamic_rate_callback = NULL;
     free(test);
 }
 
@@ -3111,7 +3155,7 @@ iperf_reset_stats(struct iperf_test *test)
 	rp = sp->result;
         rp->bytes_sent_omit = rp->bytes_sent;
         rp->bytes_received = 0;
-        rp->bytes_sent_this_interval = rp->bytes_received_this_interval = 0;
+        rp->bytes_sent_this_interval = rp->bytes_received_this_interval = rp->bytes_sent_prev_dynamic_rate = 0;
 	if (test->sender_has_retransmits == 1) {
 	    struct iperf_interval_results ir; /* temporary results structure */
 	    save_tcpinfo(sp, &ir);
@@ -3207,7 +3251,7 @@ iperf_stats_callback(struct iperf_test *test)
 	    temp.cnt_error = sp->cnt_error;
 	}
         add_to_interval_list(rp, &temp);
-        rp->bytes_sent_this_interval = rp->bytes_received_this_interval = 0;
+        rp->bytes_sent_this_interval = rp->bytes_received_this_interval = rp->bytes_sent_prev_dynamic_rate = 0;
     }
 
     /* Verify that total server's throughput is not above specified limit */
@@ -4134,6 +4178,59 @@ wait_for_signal(struct iperf_test *test) {
         return -1;
     }
     return 0;
+
+/**************************************************************************/
+/**
+ * default dynamic rate decision function in bits per second
+ * 
+ * this is intended to be overridden by LD_PRELOAD
+ * `nowP` might be NULL
+ */
+iperf_size_t
+iperf_next_dynamic_rate(int streamidx, struct iperf_stream *sp, struct iperf_time *nowP, double total_seconds) {
+    return total_seconds * sp->test->settings->rate;
+}
+
+void
+dynamic_rate_update(struct iperf_test *test, struct iperf_time *nowP) {
+    struct iperf_stream *sp;
+    double total_seconds;
+    struct iperf_time temp_time;
+    int sidx = 0;
+
+    SLIST_FOREACH(sp, &test->streams, streams) {
+        /* total time */
+        iperf_time_diff(&sp->result->start_time_fixed, nowP, &temp_time);
+        total_seconds = iperf_time_in_secs(&temp_time);
+
+        /* update */
+        sp->dynamic_rate = iperf_next_dynamic_rate(sidx, sp, nowP, total_seconds);
+
+        if (sp->test->settings->fqrate != 0) {
+            iperf_size_t fqrate = sp->dynamic_rate / 8;
+            if (setsockopt(sp->socket, SOL_SOCKET, SO_MAX_PACING_RATE, (void *)&fqrate, sizeof(fqrate)) < 0) {
+                warning("Unable to set socket pacing");
+            }
+        }
+
+        /* initialize */
+        memcpy(&sp->result->prev_dynamic_rate_time, nowP, sizeof(struct iperf_time));
+        sp->result->bytes_sent_prev_dynamic_rate = sp->result->bytes_sent;
+        sidx++;
+    }
+}
+
+void
+iperf_dynamic_rate_callback(struct iperf_test *test, struct iperf_time *nowP)
+{
+    switch (test->state) {
+        case TEST_RUNNING:
+        case TEST_START:
+            /* update rate for each streams */
+            dynamic_rate_update(test, nowP);
+            break;
+    }
+
 }
 
 /**************************************************************************/
@@ -4237,6 +4334,18 @@ iperf_new_stream(struct iperf_test *test, int s, int sender)
 
     sp->snd = test->protocol->send;
     sp->rcv = test->protocol->recv;
+
+    /* initialize dynamic rate */
+    if (test->settings->dynamic_rate_enabled) {
+        sp->dynamic_rate = iperf_next_dynamic_rate(-1, sp, NULL, 0.0);
+        if (test->settings->fqrate != 0) {
+            iperf_size_t fqrate = sp->dynamic_rate / 8;
+            if (setsockopt(s, SOL_SOCKET, SO_MAX_PACING_RATE, (void*)&fqrate, sizeof(fqrate)) < 0) {
+                warning("Unable to set socket pacing");
+            }
+        }
+    } else
+        sp->dynamic_rate = 0;
 
     if (test->diskfile_name != (char*) 0) {
 	sp->diskfile_fd = open(test->diskfile_name, sender ? O_RDONLY : (O_WRONLY|O_CREAT|O_TRUNC), S_IRUSR|S_IWUSR);
