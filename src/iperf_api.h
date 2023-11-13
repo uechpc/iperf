@@ -89,6 +89,7 @@ typedef uint64_t iperf_size_t;
 #define OPT_IDLE_TIMEOUT 25
 #define OPT_DONT_FRAGMENT 26
 #define OPT_RCV_TIMEOUT 27
+#define OPT_WAIT 253
 
 /* states */
 #define TEST_START 1
@@ -275,6 +276,8 @@ int       iperf_init_stream(struct iperf_stream *, struct iperf_test *);
  *
  */
 void      iperf_free_stream(struct iperf_stream * sp);
+
+int wait_for_signal(struct iperf_test *test);
 
 int has_tcpinfo(void);
 int has_tcpinfo_retransmits(void);

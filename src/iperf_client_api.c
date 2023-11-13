@@ -289,6 +289,9 @@ iperf_handle_message_client(struct iperf_test *test)
             }
             else if (iperf_create_streams(test, test->mode) < 0)
                 return -1;
+            if (test->wait)
+                if (wait_for_signal(test) < 0)
+                    return -1;
             break;
         case TEST_START:
             if (iperf_init_test(test) < 0)

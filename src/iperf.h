@@ -336,6 +336,7 @@ struct iperf_test
     int        done;
     Timer     *stats_timer;
     Timer     *reporter_timer;
+    int       wait;
 
     double cpu_util[3];                            /* cpu utilization of the test - total, user, system */
     double remote_cpu_util[3];                     /* cpu utilization for the remote host/client - total, user, system */

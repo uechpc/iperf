@@ -1054,6 +1054,7 @@ iperf_parse_arguments(struct iperf_test *test, int argc, char **argv)
 	{"connect-timeout", required_argument, NULL, OPT_CONNECT_TIMEOUT},
         {"idle-timeout", required_argument, NULL, OPT_IDLE_TIMEOUT},
         {"rcv-timeout", required_argument, NULL, OPT_RCV_TIMEOUT},
+        {"wait", no_argument, NULL, OPT_WAIT},
         {"debug", no_argument, NULL, 'd'},
         {"help", no_argument, NULL, 'h'},
         {NULL, 0, NULL, 0}
@@ -1419,6 +1420,9 @@ iperf_parse_arguments(struct iperf_test *test, int argc, char **argv)
                 test->settings->rcv_timeout.secs = rcv_timeout_in / SEC_TO_mS;
                 test->settings->rcv_timeout.usecs = (rcv_timeout_in % SEC_TO_mS) * mS_TO_US;
                 rcv_timeout_flag = 1;
+	        break;
+            case OPT_WAIT:
+                test->wait = 1;
 	        break;
             case 'A':
 #if defined(HAVE_CPU_AFFINITY)
@@ -4105,6 +4109,31 @@ print_interval_results(struct iperf_test *test, struct iperf_stream *sp, cJSON *
 
     if (test->logfile || test->forceflush)
         iflush(test);
+}
+
+/**************************************************************************/
+int
+wait_for_signal(struct iperf_test *test) {
+    int ret;
+
+    sigset_t sigset;
+    int sig;
+
+    if ((ret = sigaddset(&sigset, SIGCONT)) != 0) {
+        perror("sigaddset");
+        return -1;
+    }
+    if ((ret = sigprocmask(SIG_BLOCK, &sigset, NULL)) != 0) {
+        perror("sigprocmask");
+        return -1;
+    }
+
+    iperf_printf(test, "waiting for SIGCONT to pid: %d\n", getpid());
+    if ((ret = sigwait(&sigset, &sig)) != 0) {
+        perror("sigwait");
+        return -1;
+    }
+    return 0;
 }
 
 /**************************************************************************/

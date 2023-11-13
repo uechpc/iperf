@@ -724,6 +724,10 @@ iperf_run_server(struct iperf_test *test)
 			return -1;
 		    }
 
+                    if (test->wait)
+                        if (wait_for_signal(test) < 0)
+                            return -1;
+
 		    // Begin calculating CPU utilization
 		    cpu_util(NULL);
 
